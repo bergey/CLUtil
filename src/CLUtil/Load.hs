@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 -- | Utilities for loading OpenCL programs from source.
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -14,7 +15,9 @@ module CLUtil.Load
     )
 where
 
+import Control.Exception (handle, throw)
 import Control.Monad ((>=>))
+import Data.Function ((&))
 import Control.Parallel.OpenCL
 import CLUtil.State
 import Data.List(intercalate)
@@ -140,7 +143,11 @@ instance OpenCLSource String where
 loadProgramWOptions :: (OpenCLSource s) => [CLBuildOption] -> OpenCLState -> s -> IO (String -> IO CLKernel)
 loadProgramWOptions options state src =
   do  p <- clCreateProgramWithSource (clContext state) $ prepSource src
-      clBuildProgram p [clDevice state] $ formOptions options
+      clBuildProgram p [clDevice state] (formOptions options)
+          & handle (\(err :: CLError) -> do
+                           putStrLn =<< clGetProgramBuildLog p (clDevice state)
+                           throw err
+                   )
       return $ clCreateKernel p
 
 -- |Load a program using a previously initialized
